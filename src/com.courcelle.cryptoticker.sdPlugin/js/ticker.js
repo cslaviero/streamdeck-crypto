@@ -570,8 +570,27 @@ const tickerAction = {
     },
 
     getTickerValue: async function (pair, toCurrency, exchange) {
-        const response = await fetch(tProxyBase + "/api/Ticker/json/" + (exchange) + "/" + pair + "?fromCurrency=USD&toCurrency=" + (toCurrency));
-        const responseJson = await response.json();
+        let responseJson = null;
+        if (exchange === "NOVADAX") {
+            const response = await fetch("https://api.novadax.com/v1/market/ticker?symbol=" + pair);
+            const json = await response.json();
+            if (json && json.data) {
+                const data = json.data;
+                responseJson = {
+                    dailyChange: parseFloat(data.lastPrice) - parseFloat(data.open24h),
+                    dailyChangeRelative: (parseFloat(data.lastPrice) - parseFloat(data.open24h)) / parseFloat(data.open24h),
+                    last: parseFloat(data.lastPrice),
+                    volume: parseFloat(data.baseVolume24h),
+                    high24h: parseFloat(data.high24h),
+                    low24h: parseFloat(data.low24h),
+                    symbol: data.symbol,
+                    symbolDisplay: data.symbol
+                };
+            }
+        } else {
+            const response = await fetch(tProxyBase + "/api/Ticker/json/" + (exchange) + "/" + pair + "?fromCurrency=USD&toCurrency=" + (toCurrency));
+            responseJson = await response.json();
+        }
 
         return this.extractValues(responseJson);
     },
@@ -606,8 +625,42 @@ const tickerAction = {
             return cache[c];
         }
 
-        const response = await fetch(tProxyBase + "/api/Candles/json/" + exchange + "/" + pair + "/" + interval + "?limit=20");
-        const val = this.getCandlesNormalized((await response.json()).candles);
+        let val = [];
+        if (exchange === "NOVADAX") {
+            const intervalMap = {
+                "MINUTES_1": {u: "ONE_MIN", s: 60},
+                "MINUTES_5": {u: "FIVE_MIN", s: 300},
+                "MINUTES_15": {u: "FIFTEEN_MIN", s: 900},
+                "MINUTES_30": {u: "HALF_HOU", s: 1800},
+                "HOURS_1": {u: "ONE_HOU", s: 3600},
+                "DAYS_1": {u: "ONE_DAY", s: 86400},
+                "DAYS_7": {u: "ONE_WEE", s: 604800},
+                "MONTHS_1": {u: "ONE_MON", s: 2592000}
+            };
+            const mapEntry = intervalMap[interval] || intervalMap["HOURS_1"];
+            const nowSec = Math.floor(Date.now() / 1000);
+            const from = nowSec - mapEntry.s * 20;
+            const to = nowSec;
+            const url = "https://api.novadax.com/v1/market/kline/history?symbol=" + pair + "&unit=" + mapEntry.u + "&from=" + from + "&to=" + to;
+            const response = await fetch(url);
+            const json = await response.json();
+            if (json && json.data) {
+                const candles = json.data.map(function(c){
+                    return {
+                        ts: c.score * 1000,
+                        open: parseFloat(c.openPrice),
+                        close: parseFloat(c.closePrice),
+                        high: parseFloat(c.highPrice),
+                        low: parseFloat(c.lowPrice),
+                        volumeQuote: parseFloat(c.vol)
+                    };
+                });
+                val = this.getCandlesNormalized(candles);
+            }
+        } else {
+            const response = await fetch(tProxyBase + "/api/Candles/json/" + exchange + "/" + pair + "/" + interval + "?limit=20");
+            val = this.getCandlesNormalized((await response.json()).candles);
+        }
 
         cache[t] = now;
         cache[c] = val;
@@ -622,6 +675,8 @@ const tickerAction = {
                 return "MINUTES_5";
             case "15m":
                 return "MINUTES_15";
+            case "30m":
+                return "MINUTES_30";
             case "1h":
                 return "HOURS_1";
             case "6h":
