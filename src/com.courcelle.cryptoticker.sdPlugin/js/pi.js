@@ -218,8 +218,18 @@ const pi = {
             return cache[cacheKey];
         }
 
-        const response = await fetch(tProxyBase + "/api/Ticker/json/providers");
-        const responseJson = await response.json();
+        let responseJson = [];
+        try {
+            const response = await fetch(tProxyBase + "/api/Ticker/json/providers");
+            responseJson = await response.json();
+        } catch(e) {
+            console.error("Failed loading providers", e);
+        }
+
+        if (responseJson.indexOf("NOVADAX") < 0) {
+            responseJson.push("NOVADAX");
+        }
+
         this.log("getProviders", responseJson);
 
         cache[cacheKey] = responseJson;
@@ -231,8 +241,18 @@ const pi = {
             return cache[cacheKey];
         }
 
-        const response = await fetch(tProxyBase + "/api/Ticker/json/symbols?provider="+provider);
-        const responseJson = await response.json();
+        let responseJson = [];
+        if (provider === "NOVADAX") {
+            const response = await fetch("https://api.novadax.com/v1/common/symbols");
+            const json = await response.json();
+            if (json && json.data) {
+                responseJson = json.data.map(function (p) { return {symbol: p.symbol}; });
+            }
+        } else {
+            const response = await fetch(tProxyBase + "/api/Ticker/json/symbols?provider="+provider);
+            responseJson = await response.json();
+        }
+
         this.log("getPairs", responseJson);
 
         cache[cacheKey] = responseJson;
@@ -262,8 +282,17 @@ const pi = {
             return cache[cacheKey];
         }
 
-        const response = await fetch(tProxyBase + "/api/Ticker/json/currencies");
-        const responseJson = await response.json();
+        let responseJson = [];
+        try {
+            const response = await fetch(tProxyBase + "/api/Ticker/json/currencies");
+            responseJson = await response.json();
+        } catch(e) {
+            console.error("Failed loading currencies", e);
+        }
+
+        if (responseJson.indexOf("BRL") < 0) {
+            responseJson.push("BRL");
+        }
         this.log("getCurrencies", responseJson);
 
         cache[cacheKey] = responseJson;
